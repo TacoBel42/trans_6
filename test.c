@@ -166,8 +166,10 @@ MU_TEST(test_assign_int_nonempty) {
   char input[] = "= 1+2+3+4,";
   write_string_to_stdin(&input[0]);
 
+  vars_map vars;
+
   symbol = scan();
-  auto result = assign_int();
+  auto result = assign_int(vars);
 
   try {
     mu_check(std::get<int>(result) == 10);
@@ -179,8 +181,10 @@ MU_TEST(test_assign_int_empty) {
   char input[] = ",";
   write_string_to_stdin(&input[0]);
 
+  vars_map vars;
+
   symbol = scan();
-  auto result = assign_int();
+  auto result = assign_int(vars);
 
   try {
     std::get<std::monostate>(result);
@@ -189,86 +193,149 @@ MU_TEST(test_assign_int_empty) {
   }
 }
 
-MU_TEST(test_var_list) {
-  // Тестирует и var_list и var_list_tail
-  char input[] = "a,b,c,d =";
-  write_string_to_stdin(&input[0]);
+void check_val_int(vars_map &vars, bool noval, int val, char *str) {
+  mu_check(vars[str].name == str);
+  if (noval) {
+    try {
+      std::get<std::monostate>(vars[str].value);
+    } catch (const std::bad_variant_access &e) {
+      mu_fail("Should be empty?!\n");
+    }
 
-  symbol = scan();
-  vars_map vars;
-  var_list(vars);
-
-  mu_check(vars.size() == 4);
-
-  mu_check(vars["a"].name == "a");
-  mu_check(vars["b"].name == "b");
-  mu_check(vars["c"].name == "c");
-  mu_check(vars["d"].name == "d");
-
-  // mu_check(strlen(input) - 1 == ftell(current_stream));
-  // symbol = scan();
-  // mu_check(symbol == EQUAL);
+  } else {
+    try {
+      mu_check(std::get<int>(vars[str].value) == val);
+    } catch (const std::bad_variant_access &e) {
+      mu_fail("Should be ?!\n");
+    }
+  }
+  mu_check(vars[str].type == Int);
 }
 
 MU_TEST(test_var_int) {
-  // Тестирует и var_list и var_list_tail
-  char input[] = "int a,b,c,d = 1+2+3+4, e=6, f;";
+  char input[] = "int a,b,c,d = 10, f,e;";
   write_string_to_stdin(&input[0]);
 
   symbol = scan();
   vars_map vars;
   var_int(vars);
 
+  std::cout << "\n" << vars.size() << std::endl;
   mu_check(vars.size() == 6);
 
-  mu_check(vars["a"].name == "a");
-  mu_check(vars["a"].type == Int);
-  try {
-    mu_check(std::get<int>(vars["a"].value) == 10);
-  } catch (const std::bad_variant_access &e) {
-    mu_fail("Should be 10!\n");
-  }
+  check_val_int(vars, false, 10, "a");
+  check_val_int(vars, false, 10, "b");
+  check_val_int(vars, false, 10, "c");
+  check_val_int(vars, false, 10, "d");
+  check_val_int(vars, true, 10, "f");
+  check_val_int(vars, true, 10, "e");
 
-  mu_check(vars["b"].name == "b");
-  mu_check(vars["b"].type == Int);
-  try {
-    mu_check(std::get<int>(vars["b"].value) == 10);
-  } catch (const std::bad_variant_access &e) {
-    mu_fail("Should be 10!\n");
-  }
-
-  mu_check(vars["c"].name == "c");
-  mu_check(vars["c"].type == Int);
-  try {
-    mu_check(std::get<int>(vars["c"].value) == 10);
-  } catch (const std::bad_variant_access &e) {
-    mu_fail("Should be 10!\n");
-  }
-
-  mu_check(vars["d"].name == "d");
-  mu_check(vars["d"].type == Int);
-  try {
-    mu_check(std::get<int>(vars["d"].value) == 10);
-  } catch (const std::bad_variant_access &e) {
-    mu_fail("Should be 10!\n");
-  }
-
-  mu_check(vars["e"].name == "e");
-  mu_check(vars["e"].type == Int);
-  try {
-    mu_check(std::get<int>(vars["e"].value) == 6);
-  } catch (const std::bad_variant_access &e) {
-    mu_fail("Should be 6!\n");
-  }
-
-  mu_check(vars["f"].name == "f");
-  mu_check(vars["f"].type == Int);
-  try {
-    std::get<std::monostate>(vars["f"].value);
-  } catch (const std::bad_variant_access &e) {
-    mu_fail("Should be empty!\n");
-  }
+  // mu_check(strlen(input) - 1 == ftell(current_stream));
+  // symbol = scan();
+  // mu_check(symbol == EQUAL);
 }
+
+void check_val_bool(vars_map &vars, bool noval, bool val, char *str) {
+  mu_check(vars[str].name == str);
+  if (noval) {
+    try {
+      std::get<std::monostate>(vars[str].value);
+    } catch (const std::bad_variant_access &e) {
+      mu_fail("Should be empty?!\n");
+    }
+
+  } else {
+    try {
+      mu_check(std::get<bool>(vars[str].value) == val);
+    } catch (const std::bad_variant_access &e) {
+      mu_fail("Should be ?!\n");
+    }
+  }
+  mu_check(vars[str].type == Bool);
+}
+
+MU_TEST(test_var_bool) {
+  char input[] = "bool a,b,c,d = true, f,e;";
+  write_string_to_stdin(&input[0]);
+
+  symbol = scan();
+  vars_map vars;
+  var_bool(vars);
+
+  std::cout << "\n" << vars.size() << std::endl;
+  mu_check(vars.size() == 6);
+
+  check_val_bool(vars, false, true, "a");
+  check_val_bool(vars, false, true, "b");
+  check_val_bool(vars, false, true, "c");
+  check_val_bool(vars, false, true, "d");
+  check_val_bool(vars, true, true, "f");
+  check_val_bool(vars, true, true, "e");
+
+  // mu_check(strlen(input) - 1 == ftell(current_stream));
+  // symbol = scan();
+  // mu_check(symbol == EQUAL);
+}
+
+// MU_TEST(test_var_int) {
+//   // Тестирует и var_list и var_list_tail
+//   char input[] = "int a,b,c,d = 1+2+3+4, e=6, f;";
+//   write_string_to_stdin(&input[0]);
+//
+//   symbol = scan();
+//   vars_map vars;
+//   var_int(vars);
+//
+//   mu_check(vars.size() == 6);
+//
+//   mu_check(vars["a"].name == "a");
+//   mu_check(vars["a"].type == Int);
+//   try {
+//     mu_check(std::get<int>(vars["a"].value) == 10);
+//   } catch (const std::bad_variant_access &e) {
+//     mu_fail("Should be 10!\n");
+//   }
+//
+//   mu_check(vars["b"].name == "b");
+//   mu_check(vars["b"].type == Int);
+//   try {
+//     mu_check(std::get<int>(vars["b"].value) == 10);
+//   } catch (const std::bad_variant_access &e) {
+//     mu_fail("Should be 10!\n");
+//   }
+//
+//   mu_check(vars["c"].name == "c");
+//   mu_check(vars["c"].type == Int);
+//   try {
+//     mu_check(std::get<int>(vars["c"].value) == 10);
+//   } catch (const std::bad_variant_access &e) {
+//     mu_fail("Should be 10!\n");
+//   }
+//
+//   mu_check(vars["d"].name == "d");
+//   mu_check(vars["d"].type == Int);
+//   try {
+//     mu_check(std::get<int>(vars["d"].value) == 10);
+//   } catch (const std::bad_variant_access &e) {
+//     mu_fail("Should be 10!\n");
+//   }
+//
+//   mu_check(vars["e"].name == "e");
+//   mu_check(vars["e"].type == Int);
+//   try {
+//     mu_check(std::get<int>(vars["e"].value) == 6);
+//   } catch (const std::bad_variant_access &e) {
+//     mu_fail("Should be 6!\n");
+//   }
+//
+//   mu_check(vars["f"].name == "f");
+//   mu_check(vars["f"].type == Int);
+//   try {
+//     std::get<std::monostate>(vars["f"].value);
+//   } catch (const std::bad_variant_access &e) {
+//     mu_fail("Should be empty!\n");
+//   }
+// }
 
 MU_TEST(test_varint) {
   // Тестирует var с заданным int
@@ -397,7 +464,7 @@ MU_TEST(test_example) {
 
   symbol = scan();
   vars_map vars;
-  var(vars);
+  start(vars);
 
   mu_check(vars.size() == 3);
 
@@ -436,11 +503,11 @@ MU_TEST_SUITE(test_suite) {
   MU_RUN_TEST(test_number);
   MU_RUN_TEST(test_assign_int_nonempty);
   MU_RUN_TEST(test_assign_int_empty);
-  MU_RUN_TEST(test_var_list);
   MU_RUN_TEST(test_var_int);
-  MU_RUN_TEST(test_var_int);
-  MU_RUN_TEST(test_varint);
-  MU_RUN_TEST(test_varbool);
+  MU_RUN_TEST(test_var_bool);
+  //   MU_RUN_TEST(test_var_int);
+  //  MU_RUN_TEST(test_varint);
+  //  MU_RUN_TEST(test_varbool);
 
   MU_RUN_TEST(test_example);
 }

@@ -52,16 +52,25 @@ using vars_map = std::unordered_map<std::string, Var>;
 int scan();
 int number();
 int number_tail();
-OptionInt assign_int();
+OptionInt assign_int(vars_map &);
 void var_list(vars_map &);
 void var_list_tail(vars_map &);
+
 void var_int(vars_map &);
-void var_int_tail(vars_map &);
+void var_list_int(vars_map &);
+void var_list_tail_int(vars_map &);
+// void var_int_tail(vars_map &);
+
+void start(vars_map &);
+void var_tail(vars_map &);
+void var_decl(vars_map &);
 
 bool boolean();
-OptionBool assign_bool();
+OptionBool assign_bool(vars_map &);
 void var_bool(vars_map &);
-void var_bool_tail(vars_map &);
+void var_list_bool(vars_map &);
+void var_list_bool_tail(vars_map &);
+// void var_bool_tail(vars_map &);
 
 void print_vars_map(vars_map &vars) {
   for (auto &pair : vars) {
@@ -93,6 +102,8 @@ void print_vars_map(vars_map &vars) {
   }
 }
 
+// ----------------------------------------------------------------------
+/// OLD GRAMMAR:
 // start: var;
 //
 // var: var_bool ';' var | var_int ';' var |;
@@ -111,6 +122,53 @@ void print_vars_map(vars_map &vars) {
 // assign_int: | '=' number;
 // number: NUM number_tail;
 // number_tail: | '+' number;
+// ----------------------------------------------------------------------
+/// NEW GRAMMAR:
+// start: var_decl var_tail;
+// var_tail: var_decl var_tail |;
+// var_decl: var_bool ';' | var_int ';';
+//
+// var_bool: 'bool' var_list_bool;
+// var_list_bool: ID assign_bool var_list_tail_bool;
+// var_list_tail_bool: ',' var_list_bool |;
+// assign_bool: | '=' bool;
+// boolean: 'true' | 'false';
+//
+// var_int: 'int' var_list_int;
+// var_list_int: ID assign_int var_list_tail_int;
+// var_list_tail_int: ',' var_list_int |;
+//
+// assign_int: | '=' number;
+// number: NUM number_tail;
+// number_tail: | '+' number;
+//
+void start(vars_map &vars) {
+  // start: var_decl var_tail;
+  var_decl(vars);
+  symbol = scan();
+  var_tail(vars);
+}
+void var_tail(vars_map &vars) {
+  // var_tail: var_decl var_tail |;
+  if (symbol != EOF) {
+    var_decl(vars);
+    symbol = scan();
+    var_tail(vars);
+  }
+}
+void var_decl(vars_map &vars) {
+  // var_decl: var_bool ';' | var_int ';';
+  if (symbol == BOOL) {
+    var_bool(vars);
+  } else if (symbol == INT) {
+    var_int(vars);
+  } else {
+    error("Expected INT or BOOL");
+  }
+  if (symbol != SEMICOLON) {
+    error("Expected SEMICOLON");
+  }
+}
 
 void var(vars_map &vars) {
   if (symbol == BOOL) {
@@ -146,7 +204,7 @@ void var_bool_common(vars_map &vars) {
   symbol = scan();
   var_list(vars_local);
 
-  auto val = assign_bool();
+  auto val = assign_bool(vars_local);
 
   for (auto &pair : vars_local) {
     if (vars.count(pair.first) > 0)
@@ -159,34 +217,75 @@ void var_bool_common(vars_map &vars) {
     pair.second.type = Bool;
   }
 
-  var_bool_tail(vars);
+  // var_bool_tail(vars);
 
   vars.insert(vars_local.begin(), vars_local.end());
 }
 
 void var_bool(vars_map &vars) {
   // <var_bool> ::= 'bool' <var_list> <assign_bool> <var_bool_tail>
+  // var_bool: 'bool' var_list_bool;
   if (symbol != BOOL) {
     error("Expected bool!");
   }
-  var_bool_common(vars);
+  symbol = scan();
+  var_list_bool(vars);
 }
 
-void var_bool_tail(vars_map &vars) {
+void var_list_bool(vars_map &vars) {
+  // var_list_bool: ID assign_bool var_list_tail_bool;
+  if (symbol != ID) {
+    error("Expected ID!");
+  }
+
+  static vars_map vars_local;
+
+  std::string id(buf);
+  vars_local[id].name = std::string(id);
+  vars_local[id].type = Bool;
+
+  symbol = scan();
+  auto val = assign_bool(vars_local);
+  if (auto val_bool = std::get_if<bool>(&val)) {
+    vars.insert(vars_local.begin(), vars_local.end());
+    vars_local = {};
+  }
+
+  // symbol = scan();
+  var_list_bool_tail(vars);
+
+  if (!std::get_if<bool>(&val)) {
+    vars.insert(vars_local.begin(), vars_local.end());
+    vars_local = {};
+  }
+}
+
+void var_list_bool_tail(vars_map &vars) {
   // <var_bool_tail> ::= ',' var_list assign_bool var_bool_tail | ε
+  // var_list_tail_bool: ',' var_list_bool |;
   if (symbol != COMMA) {
     return;
   }
-  var_bool_common(vars);
+  symbol = scan();
+  var_list_bool(vars);
 }
 
-OptionBool assign_bool() {
+OptionBool assign_bool(vars_map &vars) {
   // assign_bool : | '=' bool;
   OptionBool result;
   if (symbol == EQUAL) {
     symbol = scan();
     result = boolean();
     symbol = scan();
+
+    auto val = result;
+    for (auto &pair : vars) {
+      if (auto val_bool = std::get_if<bool>(&val)) {
+        pair.second.value = *val_bool;
+      } else {
+        pair.second.value = std::monostate{};
+      }
+    }
   }
 
   return result;
@@ -201,46 +300,58 @@ bool boolean() {
   error("Wrong type!");
 }
 
-void var_int_common(vars_map &vars) {
-
-  vars_map vars_local;
-
-  symbol = scan();
-  var_list(vars_local);
-
-  auto val = assign_int();
-
-  for (auto &pair : vars_local) {
-    if (vars.count(pair.first) > 0)
-      error("Variable already exists!");
-    if (auto val_int = std::get_if<int>(&val)) {
-      pair.second.value = *val_int;
-    } else {
-      pair.second.value = std::monostate{};
-    }
-    pair.second.type = Int;
-  }
-
-  var_int_tail(vars);
-
-  vars.insert(vars_local.begin(), vars_local.end());
-}
-
 void var_int(vars_map &vars) {
-  // <var_int> ::= 'int' <var_list> <assign_int> <var_int_tail>
+  // var_int: 'int' var_list_int;
   if (symbol != INT) {
     error("Expected int!");
   }
-  var_int_common(vars);
+  symbol = scan();
+  var_list_int(vars);
 }
 
-void var_int_tail(vars_map &vars) {
-  // <var_int_tail> ::= ',' var_list assign_int var_int_tail | ε
-  if (symbol != COMMA) {
-    return;
+void var_list_int(vars_map &vars) {
+  // var_list_int: ID assign_int var_list_tail_int;
+  if (symbol != ID) {
+    error("Expected ID!");
   }
-  var_int_common(vars);
+
+  static vars_map vars_local;
+
+  std::string id(buf);
+  vars_local[id].name = std::string(id);
+  vars_local[id].type = Int;
+
+  symbol = scan();
+  auto val = assign_int(vars_local);
+  if (auto val_int = std::get_if<int>(&val)) {
+    vars.insert(vars_local.begin(), vars_local.end());
+    vars_local = {};
+  }
+
+  var_list_tail_int(vars);
+
+  if (!std::get_if<int>(&val)) {
+    vars.insert(vars_local.begin(), vars_local.end());
+    vars_local = {};
+  }
 }
+
+void var_list_tail_int(vars_map &vars) {
+  // var_list_tail_int: ',' var_list_int |;
+  if (symbol != COMMA)
+    return;
+
+  symbol = scan();
+  var_list_int(vars);
+}
+
+// void var_int_tail(vars_map &vars) {
+//   // <var_int_tail> ::= ',' var_list assign_int var_int_tail | ε
+//   if (symbol != COMMA) {
+//     return;
+//   }
+//   var_int_common(vars);
+// }
 
 void var_list_tail(vars_map &vars) {
   // var_list_tail: | ',' var_list;
@@ -264,12 +375,21 @@ void var_list(vars_map &vars) {
   var_list_tail(vars);
 }
 
-OptionInt assign_int() {
+OptionInt assign_int(vars_map &vars) {
   // assign_int: | '=' number;
   OptionInt result;
   if (symbol == EQUAL) {
     symbol = scan();
     result = number();
+
+    auto val = result;
+    for (auto &pair : vars) {
+      if (auto val_int = std::get_if<int>(&val)) {
+        pair.second.value = *val_int;
+      } else {
+        pair.second.value = std::monostate{};
+      }
+    }
   }
 
   return result;
